@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ping</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #232C74;
+      --red:    #E63B2E;
+      --white:  #FFFFFF;
+      --grey:   #F2F3F7;
+      --border: #E2E5EE;
+      --ink:    #2A2E3A;
+      --muted:  #6B7180;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+      background: var(--grey);
+      color: var(--ink);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--navy);
+      padding: 0 16px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 900;
+      gap: 10px;
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -0.5px;
+      flex-shrink: 0;
+    }
+    .logo em { color: var(--red); font-style: normal; }
+
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+
+    .btn-list {
+      background: rgba(255,255,255,.15);
+      color: var(--white);
+      border: none;
+      padding: 7px 13px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background .15s;
+    }
+    .btn-list:hover { background: rgba(255,255,255,.25); }
+    .btn-list .list-count {
+      background: var(--red);
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    .btn-drop {
+      background: var(--red);
+      color: var(--white);
+      border: none;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity .15s;
+    }
+    .btn-drop:hover { opacity: .85; }
+
+    /* ── Filter bar ── */
+    .filters {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .filters::-webkit-scrollbar { display: none; }
+
+    .chip {
+      white-space: nowrap;
+      padding: 5px 13px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .chip.active, .chip:hover {
+      background: var(--navy);
+      color: var(--white);
+      border-color: var(--navy);
+    }
+
+    /* ── Map ── */
+    #map { flex: 1; }
+
+    /* ── Leaflet popup overrides ── */
+    .leaflet-popup-content-wrapper {
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.15);
+      padding: 0;
+      overflow: hidden;
+    }
+    .leaflet-popup-content { margin: 0; width: 270px !important; }
+    .leaflet-popup-tip-container { margin-top: -1px; }
+    .leaflet-popup-tip { background: var(--white); }
+    .leaflet-popup-close-button {
+      color: var(--muted) !important;
+      font-size: 18px !important;
+      top: 8px !important;
+      right: 10px !important;
+      z-index: 1;
+    }
+
+    /* ── Building popup ── */
+    .bpopup-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bpopup-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .bpopup-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .bpopup-pings {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    /* ── Ping row inside popup ── */
+    .ping-row {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ping-row:last-child { border-bottom: none; }
+
+    .ping-row-top {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    .ping-row-vibe {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .ping-row-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .ping-row-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .ping-row-count {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .btn-join-sm {
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-join-sm:hover:not(:disabled) { background: #1a2158; }
+    .btn-join-sm:disabled { background: #2a9a58; cursor: default; }
+
+    /* ── Marker icon reset ── */
+    .ping-icon { background: none !important; border: none !important; }
+
+    /* ── Shared sheet base ── */
+    .sheet-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(35, 44, 116, 0.4);
+      z-index: 2000;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 1;
+      transition: opacity .2s;
+    }
+    .sheet-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sheet {
+      background: var(--white);
+      border-radius: 20px 20px 0 0;
+      width: 100%;
+      max-width: 520px;
+      transform: translateY(0);
+      transition: transform .25s cubic-bezier(.32,1,.42,1);
+    }
+    .sheet-overlay.hidden .sheet { transform: translateY(100%); }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 10px auto 0;
+    }
+    .sheet-top {
+      padding: 14px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .sheet-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .btn-close {
+      background: var(--grey);
+      border: none;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Drop-ping sheet ── */
+    .drop-body {
+      padding: 18px 18px 28px;
+      max-height: 82dvh;
+      overflow-y: auto;
+    }
+
+    .form-section { margin-bottom: 18px; }
+    .form-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .loc-grid, .vibe-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .loc-card, .vibe-card {
+      padding: 10px 6px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: var(--white);
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .12s, background .12s;
+    }
+    .loc-card .loc-icon,
+    .vibe-card .vibe-emoji { font-size: 20px; display: block; margin-bottom: 4px; }
+    .loc-card .loc-name,
+    .vibe-card .vibe-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1.3;
+    }
+    .vibe-card .vibe-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+    .loc-card.selected,
+    .vibe-card.selected {
+      border-color: var(--navy);
+      background: #f0f2fb;
+    }
+
+    .time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .form-select, .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--white);
+      font-family: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .form-select:focus, .form-input:focus {
+      outline: none;
+      border-color: var(--navy);
+    }
+    .form-input::placeholder { color: var(--muted); }
+
+    .hint { font-size: 12px; color: var(--red); margin-top: 10px; min-height: 16px; }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      padding: 13px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: opacity .15s;
+    }
+    .btn-submit:hover { opacity: .88; }
+
+    /* ── List sheet ── */
+    .list-body {
+      max-height: 65dvh;
+      overflow-y: auto;
+      padding-bottom: 20px;
+    }
+
+    .list-empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .list-item {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .list-item:last-child { border-bottom: none; }
+
+    .list-emoji {
+      width: 42px;
+      height: 42px;
+      background: var(--grey);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .list-info {}
+    .list-place {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1.3;
+    }
+    .list-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .list-count {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .btn-join-list {
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      padding: 7px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    .btn-join-list:hover:not(:disabled) { background: #1a2158; }
+    .btn-join-list:disabled { background: #2a9a58; cursor: default; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">ping<em>.</em></span>
+    <div class="header-actions">
+      <button class="btn-list" id="btn-list">
+        Meetups <span class="list-count" id="total-count">0</span>
+      </button>
+      <button class="btn-drop" id="btn-drop">+ Drop a ping</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <button class="chip active">All</button>
+    <button class="chip">Happening now</button>
+    <button class="chip">Today</button>
+    <button class="chip">📚 Quiet</button>
+    <button class="chip">☕ Casual</button>
+    <button class="chip">🖥️ Group</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- ── Drop a ping sheet ── -->
+  <div class="sheet-overlay hidden" id="drop-overlay">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-top">
+        <span class="sheet-title">Drop a ping</span>
+        <button class="btn-close" id="drop-close">✕</button>
+      </div>
+      <div class="drop-body">
+
+        <div class="form-section">
+          <div class="form-label">Where?</div>
+          <div class="loc-grid">
+            <div class="loc-card" data-loc="comunicacion">
+              <span class="loc-icon">🏛️</span>
+              <div class="loc-name">Comunicación</div>
+            </div>
+            <div class="loc-card" data-loc="amigos">
+              <span class="loc-icon">☀️</span>
+              <div class="loc-name">Amigos</div>
+            </div>
+            <div class="loc-card" data-loc="biblioteca">
+              <span class="loc-icon">📚</span>
+              <div class="loc-name">Biblioteca</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-label">Vibe?</div>
+          <div class="vibe-grid">
+            <div class="vibe-card" data-vibe="quiet">
+              <span class="vibe-emoji">📚</span>
+              <div class="vibe-name">Quiet</div>
+              <div class="vibe-sub">Focused</div>
+            </div>
+            <div class="vibe-card" data-vibe="casual">
+              <span class="vibe-emoji">☕</span>
+              <div class="vibe-name">Casual</div>
+              <div class="vibe-sub">Chatty</div>
+            </div>
+            <div class="vibe-card" data-vibe="group">
+              <span class="vibe-emoji">🖥️</span>
+              <div class="vibe-name">Group</div>
+              <div class="vibe-sub">Project</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-label">When?</div>
+          <div class="time-row">
+            <select class="form-select" id="ping-day">
+              <option value="Today">Today</option>
+              <option value="Tomorrow">Tomorrow</option>
+            </select>
+            <input class="form-input" type="time" id="ping-time" />
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-label">Your name</div>
+          <input class="form-input" type="text" id="host-name" placeholder="e.g. Sara M." maxlength="30" />
+        </div>
+
+        <div class="hint" id="form-hint"></div>
+        <button class="btn-submit" id="btn-submit">Drop it</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Meetups list sheet ── -->
+  <div class="sheet-overlay hidden" id="list-overlay">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-top">
+        <span class="sheet-title" id="list-title">Meetups</span>
+        <button class="btn-close" id="list-close">✕</button>
+      </div>
+      <div class="list-body" id="list-body"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+
+    // ─────────────────────────────────────────
+    // Static data
+    // ─────────────────────────────────────────
+
+    const LOCATIONS = {
+      comunicacion: { name: 'Edificio de Comunicación', lat: 42.801576, lng: -1.655966 },
+      amigos:       { name: 'Edificio de Amigos',        lat: 42.800616, lng: -1.654657 },
+      biblioteca:   { name: 'Biblioteca de Humanidades',  lat: 42.801628, lng: -1.657490 },
+    };
+
+    const VIBES = {
+      quiet:  { emoji: '📚', label: 'Quiet · Focused' },
+      casual: { emoji: '☕', label: 'Casual · Chatty'  },
+      group:  { emoji: '🖥️', label: 'Group · Project'  },
+    };
+
+    // ─────────────────────────────────────────
+    // Pings — each has a locKey so we know its building
+    // ─────────────────────────────────────────
+
+    let pings = [
+      { id: 1, locKey: 'biblioteca',   type: 'quiet',  host: 'Sara M.',  time: 'Today · 3:00 PM',  count: 4 },
+      { id: 2, locKey: 'amigos',       type: 'casual', host: 'Javi R.',  time: 'Today · 4:30 PM',  count: 2 },
+      { id: 3, locKey: 'comunicacion', type: 'group',  host: 'Ana L.',   time: 'Today · 6:00 PM',  count: 5 },
+    ];
+
+    // ─────────────────────────────────────────
+    // Map
+    // ─────────────────────────────────────────
+
+    const map = L.map('map', {
+      center: [42.801100, -1.656336],
+      zoom: 17,
+      zoomControl: false,
+    });
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    // ─────────────────────────────────────────
+    // Building markers — one per building
+    // ─────────────────────────────────────────
+
+    const buildingMarkers = {};
+
+    function pingsAt(locKey) {
+      return pings.filter(p => p.locKey === locKey);
+    }
+
+    function makeBuildingIcon(locKey) {
+      const bPings = pingsAt(locKey);
+      const count  = bPings.length;
+
+      // Collect distinct vibe emojis in order they appear
+      const seen = [], emojis = [];
+      bPings.forEach(p => {
+        if (!seen.includes(p.type)) { seen.push(p.type); emojis.push(VIBES[p.type].emoji); }
+      });
+
+      let inner;
+      if (emojis.length === 1) {
+        inner = `<span style="font-size:22px;line-height:1">${emojis[0]}</span>`;
+      } else if (emojis.length === 2) {
+        inner = `<span style="font-size:14px;line-height:1;letter-spacing:-1px">${emojis[0]}${emojis[1]}</span>`;
+      } else {
+        inner = `<span style="font-size:14px;line-height:1;letter-spacing:-1px">${emojis[0]}${emojis[1]}<span style="font-size:10px;color:#6B7180">+</span></span>`;
+      }
+
+      return L.divIcon({
+        html: `
+          <div style="position:relative;width:46px;height:46px;background:#fff;
+            border:2.5px solid #E2E5EE;border-radius:50%;display:flex;
+            align-items:center;justify-content:center;
+            box-shadow:0 2px 12px rgba(0,0,0,.15);cursor:pointer;">
+            ${inner}
+            <div style="position:absolute;top:-5px;right:-5px;background:#E63B2E;
+              color:#fff;font-size:10px;font-weight:800;min-width:18px;height:18px;
+              padding:0 3px;border-radius:9px;display:flex;align-items:center;
+              justify-content:center;font-family:-apple-system,sans-serif;">${count}</div>
+          </div>`,
+        className:   'ping-icon',
+        iconSize:    [46, 46],
+        iconAnchor:  [23, 23],
+        popupAnchor: [0, -28],
+      });
+    }
+
+    function makeBuildingPopup(locKey) {
+      const loc    = LOCATIONS[locKey];
+      const bPings = pingsAt(locKey);
+      const n      = bPings.length;
+
+      const rows = bPings.map(ping => `
+        <div class="ping-row">
+          <div class="ping-row-top">
+            <span class="ping-row-vibe">${VIBES[ping.type].emoji} ${VIBES[ping.type].label}</span>
+          </div>
+          <div class="ping-row-meta">${ping.host} · ${ping.time}</div>
+          <div class="ping-row-footer">
+            <span class="ping-row-count" id="count-popup-${ping.id}">${ping.count} going</span>
+            <button class="btn-join-sm" id="join-popup-${ping.id}"
+              onclick="joinPing(${ping.id})" ${joined[ping.id] ? 'disabled' : ''}>
+              ${joined[ping.id] ? "You're in ✓" : "I'll be there"}
+            </button>
+          </div>
+        </div>`).join('');
+
+      return `
+        <div>
+          <div class="bpopup-header">
+            <div class="bpopup-name">${loc.name}</div>
+            <div class="bpopup-sub">${n} ping${n !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="bpopup-pings">${rows}</div>
+        </div>`;
+    }
+
+    function refreshBuildingMarker(locKey) {
+      const bPings = pingsAt(locKey);
+      const loc    = LOCATIONS[locKey];
+
+      if (buildingMarkers[locKey]) {
+        buildingMarkers[locKey].remove();
+        delete buildingMarkers[locKey];
+      }
+
+      if (bPings.length === 0) return;
+
+      const marker = L.marker([loc.lat, loc.lng], { icon: makeBuildingIcon(locKey) })
+        .bindPopup(makeBuildingPopup(locKey), { maxWidth: 300, minWidth: 270 });
+
+      marker.addTo(map);
+      buildingMarkers[locKey] = marker;
+    }
+
+    // ─────────────────────────────────────────
+    // Join state — declared before first marker init so popup templates can read it
+    // ─────────────────────────────────────────
+
+    const joined = {};
+
+    // Init all building markers
+    Object.keys(LOCATIONS).forEach(refreshBuildingMarker);
+
+    window.joinPing = function(id) {
+      if (joined[id]) return;
+      joined[id] = true;
+
+      const ping = pings.find(p => p.id === id);
+      ping.count += 1;
+
+      // Update wherever these IDs exist right now (popup or list)
+      ['popup', 'list'].forEach(ctx => {
+        const joinEl  = document.getElementById(`join-${ctx}-${id}`);
+        const countEl = document.getElementById(`count-${ctx}-${id}`);
+        if (joinEl)  { joinEl.textContent = "You're in ✓"; joinEl.disabled = true; }
+        if (countEl) countEl.textContent = `${ping.count} going`;
+      });
+
+      // Refresh marker badge + popup content
+      refreshBuildingMarker(ping.locKey);
+      if (listOpen) renderList();
+    };
+
+    // ─────────────────────────────────────────
+    // List panel
+    // ─────────────────────────────────────────
+
+    let listOpen = false;
+
+    function renderList() {
+      const body  = document.getElementById('list-body');
+      const title = document.getElementById('list-title');
+
+      if (pings.length === 0) {
+        body.innerHTML = `<div class="list-empty">No meetups yet.<br>Drop the first ping.</div>`;
+        title.textContent = 'Meetups';
+        return;
+      }
+
+      title.textContent = `Meetups · ${pings.length}`;
+
+      body.innerHTML = pings.map(ping => {
+        const loc  = LOCATIONS[ping.locKey];
+        const vibe = VIBES[ping.type];
+        const isJoined = joined[ping.id];
+        return `
+          <div class="list-item">
+            <div class="list-emoji">${vibe.emoji}</div>
+            <div class="list-info">
+              <div class="list-place">${loc.name}</div>
+              <div class="list-meta">${ping.host} · ${ping.time}</div>
+              <div class="list-count" id="count-list-${ping.id}">${ping.count} going</div>
+            </div>
+            <button class="btn-join-list" id="join-list-${ping.id}"
+              onclick="joinPing(${ping.id})" ${isJoined ? 'disabled' : ''}>
+              ${isJoined ? "You're in ✓" : "I'll be there"}
+            </button>
+          </div>`;
+      }).join('');
+    }
+
+    function updateTotalCount() {
+      document.getElementById('total-count').textContent = pings.length;
+    }
+
+    updateTotalCount();
+
+    const listOverlay = document.getElementById('list-overlay');
+
+    document.getElementById('btn-list').addEventListener('click', () => {
+      closeDropSheet();
+      renderList();
+      listOpen = true;
+      listOverlay.classList.remove('hidden');
+    });
+
+    document.getElementById('list-close').addEventListener('click', () => {
+      listOpen = false;
+      listOverlay.classList.add('hidden');
+    });
+
+    listOverlay.addEventListener('click', e => {
+      if (e.target === listOverlay) {
+        listOpen = false;
+        listOverlay.classList.add('hidden');
+      }
+    });
+
+    // ─────────────────────────────────────────
+    // Drop-ping sheet
+    // ─────────────────────────────────────────
+
+    const dropOverlay = document.getElementById('drop-overlay');
+    let selectedLoc   = null;
+    let selectedVibe  = null;
+
+    function openDropSheet() {
+      // reset
+      selectedLoc = null; selectedVibe = null;
+      document.querySelectorAll('.loc-card').forEach(c => c.classList.remove('selected'));
+      document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('selected'));
+      document.getElementById('host-name').value = '';
+      document.getElementById('form-hint').textContent = '';
+
+      // default time = now + 30 min, rounded to :00 or :30
+      const d = new Date(Date.now() + 30 * 60000);
+      const m = d.getMinutes() < 15 ? 0 : d.getMinutes() < 45 ? 30 : 0;
+      if (d.getMinutes() >= 45) d.setHours(d.getHours() + 1);
+      d.setMinutes(m, 0, 0);
+      document.getElementById('ping-time').value =
+        `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+
+      dropOverlay.classList.remove('hidden');
+    }
+
+    function closeDropSheet() {
+      dropOverlay.classList.add('hidden');
+    }
+
+    document.getElementById('btn-drop').addEventListener('click', () => {
+      listOpen = false;
+      listOverlay.classList.add('hidden');
+      openDropSheet();
+    });
+
+    document.getElementById('drop-close').addEventListener('click', closeDropSheet);
+    dropOverlay.addEventListener('click', e => { if (e.target === dropOverlay) closeDropSheet(); });
+
+    document.querySelectorAll('.loc-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.loc-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedLoc = card.dataset.loc;
+      });
+    });
+
+    document.querySelectorAll('.vibe-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedVibe = card.dataset.vibe;
+      });
+    });
+
+    document.getElementById('btn-submit').addEventListener('click', () => {
+      const name = document.getElementById('host-name').value.trim();
+      const day  = document.getElementById('ping-day').value;
+      const t    = document.getElementById('ping-time').value;
+      const hint = document.getElementById('form-hint');
+
+      if (!selectedLoc)  { hint.textContent = 'Pick a place.';  return; }
+      if (!selectedVibe) { hint.textContent = 'Pick a vibe.';   return; }
+      if (!name)         { hint.textContent = 'Add your name.'; return; }
+      hint.textContent = '';
+
+      const [hh, mm] = t.split(':').map(Number);
+      const h12 = hh % 12 || 12;
+      const ampm = hh >= 12 ? 'PM' : 'AM';
+      const timeLabel = `${day} · ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+
+      const newPing = {
+        id:     Date.now(),
+        locKey: selectedLoc,
+        type:   selectedVibe,
+        host:   name,
+        time:   timeLabel,
+        count:  0,
+      };
+
+      pings.push(newPing);
+      refreshBuildingMarker(selectedLoc);
+      updateTotalCount();
+      if (listOpen) renderList();
+
+      closeDropSheet();
+
+      const loc = LOCATIONS[selectedLoc];
+      map.setView([loc.lat, loc.lng], 18, { animate: true });
+      setTimeout(() => buildingMarkers[selectedLoc]?.openPopup(), 400);
+    });
+
+    // ─────────────────────────────────────────
+    // Filter chips (visual for now)
+    // ─────────────────────────────────────────
+
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+
+  </script>
+</body>
+</html>
